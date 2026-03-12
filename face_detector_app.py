@@ -6,7 +6,7 @@ from deepface import DeepFace
 import threading
 import time
 
-# ------------------ COLOR MAP ------------------
+# ---------------- COLOR MAP ----------------
 emotion_colors = {
     "happy": "#00ff00",
     "sad": "#3498db",
@@ -17,13 +17,13 @@ emotion_colors = {
     "disgust": "#e67e22"
 }
 
-# ------------------ MAIN WINDOW ------------------
+# ---------------- MAIN WINDOW ----------------
 root = tk.Tk()
 root.title("Ultimate Emotion - Developer Bipul Kumar")
-root.state("zoomed")  # Full screen maximize
+root.state("zoomed")
 root.configure(bg="#121212")
 
-# ------------------ SPLASH SCREEN ------------------
+# ---------------- SPLASH SCREEN ----------------
 splash = tk.Toplevel()
 splash.state("zoomed")
 splash.configure(bg="black")
@@ -39,13 +39,12 @@ label.pack(expand=True)
 
 root.withdraw()
 root.update()
-
 time.sleep(2)
 
 splash.destroy()
 root.deiconify()
 
-# ------------------ UI ELEMENTS ------------------
+# ---------------- UI ----------------
 video_label = tk.Label(root, bg="black")
 video_label.pack(expand=True)
 
@@ -58,11 +57,19 @@ emotion_label = tk.Label(
 )
 emotion_label.pack()
 
-# ------------------ CAMERA FUNCTION ------------------
+# ---------------- VARIABLES ----------------
 running = False
+cap = None
+frame_count = 0
 
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+)
+
+# ---------------- CAMERA ----------------
 def start_camera():
-    global running
+    global running, cap, frame_count
+
     running = True
     cap = cv2.VideoCapture(0)
 
@@ -71,77 +78,158 @@ def start_camera():
         if not ret:
             break
 
+        frame_count += 1
+
         try:
-            result = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
-            emotion = result[0]['dominant_emotion']
-            color = emotion_colors.get(emotion, "#ffffff")
+            # Run AI every 5 frames (faster)
+            if frame_count % 5 == 0:
+                result = DeepFace.analyze(
+                    frame,
+                    actions=['emotion'],
+                    enforce_detection=False
+                )
 
-            emotion_label.config(text=f"Emotion: {emotion}", fg=color)
+                emotion = result[0]['dominant_emotion']
+                color = emotion_colors.get(emotion, "#ffffff")
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = cv2.CascadeClassifier(
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            ).detectMultiScale(gray, 1.3, 5)
+                emotion_label.config(
+                    text=f"Emotion: {emotion}",
+                    fg=color
+                )
 
-            for (x, y, w, h) in faces:
-                cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 3)
+        except Exception as e:
+            print("AI Error:", e)
 
-        except:
-            pass
+        # Face detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        faces = face_cascade.detectMultiScale(
+            gray,
+            1.3,
+            5
+        )
+
+        for (x, y, w, h) in faces:
+            cv2.rectangle(
+                frame,
+                (x, y),
+                (x + w, y + h),
+                (0, 255, 0),
+                3
+            )
+
+        # Convert to Tkinter format
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
         img = ImageTk.PhotoImage(Image.fromarray(frame))
+
         video_label.imgtk = img
         video_label.configure(image=img)
 
-    cap.release()
+    if cap:
+        cap.release()
 
+# ---------------- STOP CAMERA ----------------
 def stop_camera():
-    global running
+    global running, cap
+
     running = False
 
-# ------------------ PHOTO FUNCTION ------------------
+    if cap:
+        cap.release()
+        cap = None
+
+# ---------------- PHOTO DETECTION ----------------
 def open_photo():
+
     file_path = filedialog.askopenfilename()
+
     if not file_path:
         return
 
     img = cv2.imread(file_path)
 
-    result = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
-    emotion = result[0]['dominant_emotion']
-    color = emotion_colors.get(emotion, "#ffffff")
+    try:
+        result = DeepFace.analyze(
+            img,
+            actions=['emotion'],
+            enforce_detection=False
+        )
 
-    emotion_label.config(text=f"Emotion: {emotion}", fg=color)
+        emotion = result[0]['dominant_emotion']
+        color = emotion_colors.get(emotion, "#ffffff")
+
+        emotion_label.config(
+            text=f"Emotion: {emotion}",
+            fg=color
+        )
+
+    except Exception as e:
+        print("Photo AI Error:", e)
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = cv2.CascadeClassifier(
-        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-    ).detectMultiScale(gray, 1.3, 5)
+
+    faces = face_cascade.detectMultiScale(
+        gray,
+        1.3,
+        5
+    )
 
     for (x, y, w, h) in faces:
-        cv2.rectangle(img, (x, y), (x+w, y+h), (0,255,0), 3)
+        cv2.rectangle(
+            img,
+            (x, y),
+            (x + w, y + h),
+            (0, 255, 0),
+            3
+        )
 
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
     img = ImageTk.PhotoImage(Image.fromarray(img))
+
     video_label.imgtk = img
     video_label.configure(image=img)
 
-# ------------------ MENU ------------------
-menu_frame = tk.Frame(root, bg="#1e1e1e")
-menu_frame.pack(fill="x")
+# ---------------- MENU ----------------
+menu = tk.Frame(root, bg="#1e1e1e")
+menu.pack(fill="x")
 
-btn1 = tk.Button(menu_frame, text="Start Live Camera", command=lambda: threading.Thread(target=start_camera).start(), bg="#2c3e50", fg="white")
-btn1.pack(side="left", padx=10, pady=10)
+start_btn = tk.Button(
+    menu,
+    text="Start Live Camera",
+    command=lambda: threading.Thread(target=start_camera).start(),
+    bg="#2c3e50",
+    fg="white"
+)
+start_btn.pack(side="left", padx=10, pady=10)
 
-btn2 = tk.Button(menu_frame, text="Stop Camera", command=stop_camera, bg="#c0392b", fg="white")
-btn2.pack(side="left", padx=10, pady=10)
+stop_btn = tk.Button(
+    menu,
+    text="Stop Camera",
+    command=stop_camera,
+    bg="#c0392b",
+    fg="white"
+)
+stop_btn.pack(side="left", padx=10, pady=10)
 
-btn3 = tk.Button(menu_frame, text="Open Photo", command=open_photo, bg="#16a085", fg="white")
-btn3.pack(side="left", padx=10, pady=10)
+photo_btn = tk.Button(
+    menu,
+    text="Open Photo",
+    command=open_photo,
+    bg="#16a085",
+    fg="white"
+)
+photo_btn.pack(side="left", padx=10, pady=10)
 
-btn4 = tk.Button(menu_frame, text="Exit", command=root.destroy, bg="black", fg="white")
-btn4.pack(side="right", padx=10, pady=10)
+exit_btn = tk.Button(
+    menu,
+    text="Exit",
+    command=root.destroy,
+    bg="black",
+    fg="white"
+)
+exit_btn.pack(side="right", padx=10, pady=10)
 
-# ------------------ RUN ------------------
+# ---------------- RUN ----------------
 root.mainloop()
